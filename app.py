@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import ssl
 
 # Function to load content from the provided URL
 def load_content_from_url(url):
@@ -28,14 +29,19 @@ def get_response(user_input):
     # Fallback to Grok API if no match is found
     return get_grok_response(user_input)
 
-# Function to interact with the Grok API
+# Function to interact with the Grok API with SSL verification disabled
 def get_grok_response(user_input):
     grok_api_url = "https://api.grok.ai/your_endpoint"
-    # Retrieve the API key from Streamlit secrets
     grok_api_key = st.secrets["grok"]["api_key"]
     headers = {"Authorization": f"Bearer {grok_api_key}"}
     data = {"message": user_input}
-    response = requests.post(grok_api_url, json=data, headers=headers)
+    
+    # Create an SSL context with default settings
+    context = ssl.create_default_context()
+    context.set_ciphers('DEFAULT:@SECLEVEL=1')
+    
+    # Use the context in requests
+    response = requests.post(grok_api_url, json=data, headers=headers, verify=False)  # SSL verification disabled
     return response.json().get('response')
 
 # Load the content from the URL
