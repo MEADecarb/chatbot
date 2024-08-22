@@ -43,7 +43,7 @@ def get_gemini_response(user_input):
     return response.json().get('response')
 
 # Load the content from the URL
-url = 'https://energy.maryland.gov/Documents/MEA_22AUG_2024.txt'
+url = 'https://energy.maryland.gov/_layouts/15/download.aspx?UniqueId=d9c376fc0dd54898859271dd66199070'
 web_pages_content = load_content_from_url(url)
 
 # Streamlit app setup
