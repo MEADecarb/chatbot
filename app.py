@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import ssl
 
 # Function to load content from the provided URL
 def load_content_from_url(url):
@@ -19,29 +18,28 @@ def find_answer_in_content(query, content_list):
             return f"Match found in section {idx+1}: {content[:300]}..."  # Return a snippet of the content
     return None
 
-# Function to get a response, either from the content or Grok API
+# Function to get a response, either from the content or Gemini API
 def get_response(user_input):
     # First try to find the answer in the loaded content
     response = find_answer_in_content(user_input, web_pages_content)
     if response:
         return response
     
-    # Fallback to Grok API if no match is found
-    return get_grok_response(user_input)
+    # Fallback to Gemini API if no match is found
+    return get_gemini_response(user_input)
 
-# Function to interact with the Grok API with SSL verification disabled
-def get_grok_response(user_input):
-    grok_api_url = "https://api.grok.ai/your_endpoint"
-    grok_api_key = st.secrets["grok"]["api_key"]
-    headers = {"Authorization": f"Bearer {grok_api_key}"}
-    data = {"message": user_input}
+# Function to interact with the Gemini API
+def get_gemini_response(user_input):
+    gemini_api_url = "https://api.gemini.com/your_endpoint"  # Replace with the actual Gemini API endpoint
+    gemini_api_key = st.secrets["gemini"]["api_key"]  # Ensure you've added this to Streamlit secrets
+    headers = {
+        "Authorization": f"Bearer {gemini_api_key}",
+        "Content-Type": "application/json"  # Adjust if Gemini API requires different headers
+    }
+    data = {"query": user_input}  # Adjust the payload format based on Gemini API requirements
     
-    # Create an SSL context with default settings
-    context = ssl.create_default_context()
-    context.set_ciphers('DEFAULT:@SECLEVEL=1')
-    
-    # Use the context in requests
-    response = requests.post(grok_api_url, json=data, headers=headers, verify=False)  # SSL verification disabled
+    # Make the request to the Gemini API
+    response = requests.post(gemini_api_url, json=data, headers=headers, verify=True)  # Use SSL verification
     return response.json().get('response')
 
 # Load the content from the URL
