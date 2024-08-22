@@ -1,59 +1,84 @@
 import streamlit as st
+import google.generativeai as genai
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import os
 import requests
+import xml.etree.ElementTree as ET
 
-# Function to load content from the provided URL
-def load_content_from_url(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        content = response.text
-        return content.splitlines()
-    else:
-        st.error(f"Failed to load content from {url}. Status code: {response.status_code}")
-        return []
+# Configure the Gemini API
+genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
-# Function to search for the user's query in the loaded content
-def find_answer_in_content(query, content_list):
-    for idx, content in enumerate(content_list):
-        if query.lower() in content.lower():
-            return f"Match found in section {idx+1}: {content[:300]}..."  # Return a snippet of the content
-    return None
+# Initialize the model
+model = genai.GenerativeModel('gemini-pro')
 
-# Function to get a response, either from the content or Gemini API
-def get_response(user_input):
-    # First try to find the answer in the loaded content
-    response = find_answer_in_content(user_input, web_pages_content)
-    if response:
-        return response
-    
-    # Fallback to Gemini API if no match is found
-    return get_gemini_response(user_input)
+# Function to fetch and parse sitemap
+def fetch_sitemap(url):
+  response = requests.get(url)
+  root = ET.fromstring(response.content)
+  links = [elem.text for elem in root.iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')]
+  return links
 
-# Function to interact with the Gemini API
-def get_gemini_response(user_input):
-    gemini_api_url = "https://api.gemini.com/your_endpoint"  # Replace with the actual Gemini API endpoint
-    gemini_api_key = st.secrets["gemini"]["api_key"]  # Ensure you've added this to Streamlit secrets
-    headers = {
-        "Authorization": f"Bearer {gemini_api_key}",
-        "Content-Type": "application/json"  # Adjust if Gemini API requires different headers
-    }
-    data = {"query": user_input}  # Adjust the payload format based on Gemini API requirements
-    
-    # Make the request to the Gemini API
-    response = requests.post(gemini_api_url, json=data, headers=headers, verify=True)  # Use SSL verification
-    return response.json().get('response')
+# Function to scrape website content using Selenium
+def scrape_website_with_selenium(url):
+  chrome_options = Options()
+  chrome_options.add_argument("--headless")
+  chrome_options.add_argument("--no-sandbox")
+  chrome_options.add_argument("--disable-dev-shm-usage")
 
-# Load the content from the URL
-url = 'https://energy.maryland.gov/_layouts/15/download.aspx?UniqueId=d9c376fc0dd54898859271dd66199070'
-web_pages_content = load_content_from_url(url)
+  driver = webdriver.Chrome(options=chrome_options)
+  
+  try:
+      driver.get(url)
+      time.sleep(5)
 
-# Streamlit app setup
-st.title("MEA Document Chatbot")
-st.write("Ask questions based on the content of the MEA document!")
+      WebDriverWait(driver, 10).until(
+          EC.presence_of_element_located((By.TAG_NAME, "body"))
+      )
 
-user_input = st.text_input("You: ", "")
-if st.button("Send"):
-    if user_input:
-        response = get_response(user_input)
-        st.write(f"Chatbot: {response}")
-    else:
-        st.write("Please enter a message.")
+      text_content = driver.find_element(By.TAG_NAME, "body").text
+      return text_content
+
+  finally:
+      driver.quit()
+
+# Streamlit app
+st.title("Energy Maryland Sitemap Explorer")
+
+# Fetch sitemap
+sitemap_url = "https://www.xml-sitemaps.com/download/energy.maryland.gov-49798b7b7/sitemap.xml?view=1"
+links = fetch_sitemap(sitemap_url)
+
+# Display links and allow selection
+selected_link = st.selectbox("Select a link to explore:", links)
+
+if st.button("Explore Selected Link"):
+  with st.spinner("Fetching content..."):
+      content = scrape_website_with_selenium(selected_link)
+
+  st.subheader("Page Content:")
+  st.text_area("Raw Content", content, height=200)
+
+  # Generate summary with Gemini
+  with st.spinner("Generating summary..."):
+      summary_prompt = f"Summarize the following content from {selected_link}:\n\n{content[:4000]}"  # Limit content to 4000 chars
+      summary = model.generate_content(summary_prompt)
+
+  st.subheader("Summary:")
+  st.write(summary.text)
+
+# Chat interface
+st.subheader("Ask about the page:")
+user_question = st.text_input("Your question:")
+
+if user_question:
+  with st.spinner("Generating response..."):
+      chat_prompt = f"Based on the content from {selected_link}:\n\n{content[:4000]}\n\nUser question: {user_question}"
+      response = model.generate_content(chat_prompt)
+
+  st.subheader("Response:")
+  st.write(response.text)
