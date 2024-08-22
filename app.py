@@ -56,16 +56,20 @@ links = fetch_sitemap(sitemap_url)
 # Display links and allow selection
 selected_link = st.selectbox("Select a link to explore:", links)
 
+# Initialize session state for content
+if 'content' not in st.session_state:
+  st.session_state.content = None
+
 if st.button("Explore Selected Link"):
   with st.spinner("Fetching content..."):
-      content = scrape_website_with_selenium(selected_link)
+      st.session_state.content = scrape_website_with_selenium(selected_link)
 
   st.subheader("Page Content:")
-  st.text_area("Raw Content", content, height=200)
+  st.text_area("Raw Content", st.session_state.content, height=200)
 
   # Generate summary with Gemini
   with st.spinner("Generating summary..."):
-      summary_prompt = f"Summarize the following content from {selected_link}:\n\n{content[:4000]}"  # Limit content to 4000 chars
+      summary_prompt = f"Summarize the following content from {selected_link}:\n\n{st.session_state.content[:4000]}"  # Limit content to 4000 chars
       summary = model.generate_content(summary_prompt)
 
   st.subheader("Summary:")
@@ -75,10 +79,12 @@ if st.button("Explore Selected Link"):
 st.subheader("Ask about the page:")
 user_question = st.text_input("Your question:")
 
-if user_question:
+if user_question and st.session_state.content:
   with st.spinner("Generating response..."):
-      chat_prompt = f"Based on the content from {selected_link}:\n\n{content[:4000]}\n\nUser question: {user_question}"
+      chat_prompt = f"Based on the content from {selected_link}:\n\n{st.session_state.content[:4000]}\n\nUser question: {user_question}"
       response = model.generate_content(chat_prompt)
 
   st.subheader("Response:")
   st.write(response.text)
+elif user_question:
+  st.warning("Please explore a link first before asking questions.")
