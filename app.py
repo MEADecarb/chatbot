@@ -9,6 +9,7 @@ import time
 import os
 import requests
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure the Gemini API
 genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
@@ -46,45 +47,39 @@ def scrape_website_with_selenium(url):
   finally:
       driver.quit()
 
+# Function to scrape all links
+@st.cache_data
+def scrape_all_links(links):
+  all_content = []
+  with ThreadPoolExecutor(max_workers=5) as executor:
+      future_to_url = {executor.submit(scrape_website_with_selenium, url): url for url in links[:10]}  # Limit to first 10 links for demo
+      for future in as_completed(future_to_url):
+          url = future_to_url[future]
+          try:
+              content = future.result()
+              all_content.append(f"Content from {url}:\n{content}\n\n")
+          except Exception as exc:
+              print(f'{url} generated an exception: {exc}')
+  return "\n".join(all_content)
+
 # Streamlit app
-st.title("Energy Maryland Sitemap Explorer")
+st.title("Energy Maryland Website Chatbot")
 
-# Fetch sitemap
-sitemap_url = "https://www.xml-sitemaps.com/download/energy.maryland.gov-49798b7b7/sitemap.xml?view=1"
-links = fetch_sitemap(sitemap_url)
-
-# Display links and allow selection
-selected_link = st.selectbox("Select a link to explore:", links)
-
-# Initialize session state for content
-if 'content' not in st.session_state:
-  st.session_state.content = None
-
-if st.button("Explore Selected Link"):
-  with st.spinner("Fetching content..."):
-      st.session_state.content = scrape_website_with_selenium(selected_link)
-
-  st.subheader("Page Content:")
-  st.text_area("Raw Content", st.session_state.content, height=200)
-
-  # Generate summary with Gemini
-  with st.spinner("Generating summary..."):
-      summary_prompt = f"Summarize the following content from {selected_link}:\n\n{st.session_state.content[:4000]}"  # Limit content to 4000 chars
-      summary = model.generate_content(summary_prompt)
-
-  st.subheader("Summary:")
-  st.write(summary.text)
+# Fetch sitemap and scrape content (only if not already in session state)
+if 'all_content' not in st.session_state:
+  sitemap_url = "https://www.xml-sitemaps.com/download/energy.maryland.gov-49798b7b7/sitemap.xml?view=1"
+  with st.spinner("Fetching website content... This may take a few minutes."):
+      links = fetch_sitemap(sitemap_url)
+      st.session_state.all_content = scrape_all_links(links)
 
 # Chat interface
-st.subheader("Ask about the page:")
+st.subheader("Ask a question about Energy Maryland:")
 user_question = st.text_input("Your question:")
 
-if user_question and st.session_state.content:
+if user_question:
   with st.spinner("Generating response..."):
-      chat_prompt = f"Based on the content from {selected_link}:\n\n{st.session_state.content[:4000]}\n\nUser question: {user_question}"
+      chat_prompt = f"Based on the following content from the Energy Maryland website:\n\n{st.session_state.all_content[:50000]}\n\nUser question: {user_question}"
       response = model.generate_content(chat_prompt)
 
   st.subheader("Response:")
   st.write(response.text)
-elif user_question:
-  st.warning("Please explore a link first before asking questions.")
