@@ -1,5 +1,3 @@
 streamlit
-google-generativeai
-selenium
-webdriver-manager
+streamlit-chat
 requests
