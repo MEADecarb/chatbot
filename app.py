@@ -12,20 +12,10 @@ if 'all_messages' not in st.session_state:
   st.session_state.all_messages = []
 if 'tokens' not in st.session_state:
   st.session_state.tokens = []
-if 'api_key' not in st.session_state:
-  st.session_state.api_key = ""
 
 # UI Setup
 st.set_page_config(page_title="Doc-Bot", page_icon="👋")
 st.markdown("<h1 style='text-align: center; color: red;'>Doc-Bot👋</h1>", unsafe_allow_html=True)
-
-# Sidebar for configuration
-with st.sidebar:
-  st.header("Configuration")
-  api_key = st.text_input('Grok API Key:', value=st.session_state.api_key, type="password")
-  if api_key:
-      st.session_state.api_key = api_key
-      os.environ["GROK_API_KEY"] = api_key
 
 # File handling functions
 def save_uploaded_file(uploadedfile):
@@ -49,7 +39,7 @@ def tokenize_text_file(file_path):
 def query_grok_api(query, tokens):
   url = "https://api.grok.com/v1/query"  # Replace with actual Grok API endpoint
   headers = {
-      "Authorization": f"Bearer {st.session_state.api_key}",
+      "Authorization": f"Bearer {st.secrets['GROK_API_KEY']}",
       "Content-Type": "application/json"
   }
   data = {
@@ -100,10 +90,7 @@ if datafile is not None:
   user_query = st.text_input("You: ", key="input")
   
   if st.button("Send"):
-      if not st.session_state.api_key:
-          st.error("Please enter your Grok API Key in the sidebar.")
-      else:
-          send_message(user_query)
+      send_message(user_query)
   
   display_messages()
 
