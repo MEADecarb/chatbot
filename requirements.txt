@@ -1,9 +1,5 @@
 streamlit
 transformers
-streamlit-chat
-requests
-PyPDF2
-python-docx
-docx2txt
-tiktoken
 torch
+PyPDF2
+requests
