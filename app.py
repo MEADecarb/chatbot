@@ -68,9 +68,7 @@ def display_messages():
     for msg in st.session_state.all_messages[-50:]:  # Display last 50 messages
         if 'key' not in msg:
             msg['key'] = f"added_{time.time()}"
-        message(f
-
-                        message(msg['text'], is_user=msg['is_user'], key=msg['key'])
+        message(msg['text'], is_user=msg['is_user'], key=msg['key'])
 
 # Input text box for user questions
 def user_input():
@@ -112,4 +110,3 @@ def main():
 # Run the app
 if __name__ == "__main__":
     main()
-
