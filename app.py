@@ -69,3 +69,47 @@ def display_messages():
         if 'key' not in msg:
             msg['key'] = f"added_{time.time()}"
         message(f
+
+                        message(msg['text'], is_user=msg['is_user'], key=msg['key'])
+
+# Input text box for user questions
+def user_input():
+    return st.text_input("Ask your question here...", key="input", placeholder="Type a question and hit Enter")
+
+# Main App Logic
+def main():
+    st.markdown("<h2 style='text-align: center;'>Chat with Your Document</h2>", unsafe_allow_html=True)
+
+    # Upload file
+    uploaded_file = st.file_uploader("Upload your cleaned and tokenized .txt file", type=["txt", "pdf", "docx"])
+
+    if uploaded_file is not None:
+        file_type = uploaded_file.name.split('.')[-1]
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(uploaded_file.getvalue())
+            temp_file_path = temp_file.name
+
+        # Load and tokenize the uploaded file
+        st.session_state.tokens = load_and_tokenize_file(temp_file_path, file_type)
+
+        # Display chat interface once the file is loaded
+        if st.session_state.tokens:
+            user_question = user_input()
+
+            if user_question:
+                # Display the user's question
+                st.session_state.all_messages.append({"text": user_question, "is_user": True, "key": f"user_{st.session_state.message_key}"})
+                st.session_state.message_key += 1
+
+                # Find and display the answer
+                answer = find_relevant_section(user_question, st.session_state.tokens)
+                st.session_state.all_messages.append({"text": answer, "is_user": False, "key": f"bot_{st.session_state.message_key}"})
+                st.session_state.message_key += 1
+
+            # Display conversation history
+            display_messages()
+
+# Run the app
+if __name__ == "__main__":
+    main()
+
