@@ -1,91 +1,157 @@
-import streamlit as st
-import requests
+import time
+from datetime import datetime
 import tempfile
-from transformers import AutoTokenizer, AutoModelForQuestionAnswering
-import torch
-from PyPDF2 import PdfReader
-import io
+import requests
+import streamlit as st
+from transformers import pipeline
+from streamlit_chat import message
+import PyPDF2
+import docx
 
 # Initialize session state
-if 'context' not in st.session_state:
-  st.session_state.context = ""
-if 'messages' not in st.session_state:
-  st.session_state.messages = []
-if 'source_loaded' not in st.session_state:
-  st.session_state.source_loaded = False
+if 'all_messages' not in st.session_state:
+    st.session_state.all_messages = []
+if 'tokens' not in st.session_state:
+    st.session_state.tokens = []
+if 'message_key' not in st.session_state:
+    st.session_state.message_key = 0
 
+# Load a pre-trained model
 @st.cache_resource
-def load_qa_model():
-  tokenizer = AutoTokenizer.from_pretrained("distilbert-base-cased-distilled-squad")
-  model = AutoModelForQuestionAnswering.from_pretrained("distilbert-base-cased-distilled-squad")
-  return tokenizer, model
+def load_model():
+    return pipeline("question-answering", model="distilbert/distilbert-base-cased-distilled-squad")
 
-tokenizer, model = load_qa_model()
+qa_pipeline = load_model()
 
-def extract_text_from_pdf(file):
-  pdf_reader = PdfReader(file)
-  text = ""
-  for page in pdf_reader.pages:
-      text += page.extract_text()
-  return text
+# UI Setup
+st.set_page_config(page_title="Doc-Bot", page_icon="👋")
+st.markdown("<h1 style='text-align: center; color: red;'>Doc-Bot👋</h1>", unsafe_allow_html=True)
 
-def load_text_from_url(url):
-  response = requests.get(url)
-  if response.status_code == 200:
-      return response.text
-  else:
-      st.error(f"Failed to load text from URL. Status code: {response.status_code}")
-      return ""
+# File handling functions
+@st.cache_data
+def load_and_tokenize_file(file_path, file_type='txt'):
+    try:
+        content = ""
+        if file_type == 'txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        elif file_type == 'pdf':
+            with open(file_path, 'rb') as f:
+                pdf_reader = PyPDF2.PdfReader(f)
+                for page in pdf_reader.pages:
+                    content += page.extract_text()
+        elif file_type == 'docx':
+            doc = docx.Document(file_path)
+            content = "\n".join([para.text for para in doc.paragraphs])
+        
+        tokens = content.split()  # Simplified tokenization for QA model
+        return tokens
+    except Exception as e:
+        st.error(f"Error loading and tokenizing file: {str(e)}")
+        return []
 
-def get_answer(question, context):
-  inputs = tokenizer(question, context, return_tensors="pt", max_length=512, truncation=True)
-  with torch.no_grad():
-      outputs = model(**inputs)
-  answer_start = torch.argmax(outputs.start_logits)
-  answer_end = torch.argmax(outputs.end_logits) + 1
-  answer = tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][answer_start:answer_end]))
-  return answer
+# Function to find the most relevant section
+def find_relevant_section(question, tokens):
+    try:
+        context = " ".join(tokens)
+        max_length = 512  # Adjust based on your model's capabilities
+        if len(context) > max_length:
+            context = context[:max_length]
+        result = qa_pipeline(question=question, context=context, clean_up_tokenization_spaces=True)
+        return result['answer']
+    except Exception as e:
+        st.error(f"Error in question answering: {str(e)}")
+        return "I'm sorry, I couldn't process that question. Could you try rephrasing it?"
 
-st.title("Chat with PDF or Webpage Content")
+# Message display and sending
+def display_messages():
+    for msg in st.session_state.all_messages[-50:]:  # Display last 50 messages
+        if 'key' not in msg:
+            msg['key'] = f"added_{time.time()}"
+        message(f"{msg['user']} ({msg['time']}): {msg['text'][:500]}{'...' if len(msg['text']) > 500 else ''}",
+                is_user=msg['user']=='You',
+                key=msg['key'])
 
-# Source selection
-source = st.radio("Choose your source:", ("PDF File", "Webpage Content"))
+def send_message(user_query):
+    if user_query:
+        st.session_state.message_key += 1
+        st.session_state.all_messages.append({
+            'user': 'You',
+            'time': datetime.now().strftime("%H:%M"),
+            'text': user_query,
+            'key': f"user_{st.session_state.message_key}"
+        })
+        bot_response = find_relevant_section(user_query, st.session_state.tokens)
+        st.session_state.message_key += 1
+        st.session_state.all_messages.append({
+            'user': 'Bot',
+            'time': datetime.now().strftime("%H:%M"),
+            'text': bot_response,
+            'key': f"bot_{st.session_state.message_key}"
+        })
 
-if source == "PDF File":
-  uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-  if uploaded_file is not None:
-      st.session_state.context = extract_text_from_pdf(uploaded_file)
-      st.session_state.source_loaded = True
-      st.success("PDF uploaded and processed successfully!")
-else:
-  url = "https://energy.maryland.gov/Documents/082224_CandT.txt.txt"
-  if st.button("Load content from webpage"):
-      st.session_state.context = load_text_from_url(url)
-      st.session_state.source_loaded = True
-      st.success("Content loaded from webpage successfully!")
+# Main app logic
+default_file_url = "https://energy.maryland.gov/Documents/082224_CandT.txt.txt"
+
+@st.cache_data
+def load_default_file():
+    response = requests.get(default_file_url)
+    if response.status_code == 200:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as tmp_file:
+            tmp_file.write(response.content)
+            return tmp_file.name
+    else:
+        st.error("Failed to load the default file. Please upload a file manually.")
+        return None
+
+if not st.session_state.tokens:
+    with st.spinner("Loading and tokenizing default file..."):
+        file_path = load_default_file()
+        if file_path:
+            st.session_state.tokens = load_and_tokenize_file(file_path)
+            st.success("Default file loaded and tokenized successfully!")
+
+# Option to upload a custom file
+custom_file = st.file_uploader("Or upload your own file", type=['txt', 'pdf', 'docx'])
+
+if custom_file is not None:
+    file_size = custom_file.size
+    if file_size > 10 * 1024 * 1024:  # 10 MB limit
+        st.error("File size exceeds 10 MB limit. Please upload a smaller file.")
+    else:
+        with st.spinner("Processing uploaded file..."):
+            file_type = custom_file.name.split('.')[-1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_type}') as tmp_file:
+                tmp_file.write(custom_file.getvalue())
+                file_path = tmp_file.name
+            st.session_state.tokens = load_and_tokenize_file(file_path, file_type)
+        st.success("Custom file processed successfully!")
 
 # Chat interface
-st.subheader("Chat")
-for message in st.session_state.messages:
-  with st.chat_message(message["role"]):
-      st.markdown(message["content"])
+chat_container = st.container()
+with chat_container:
+    st.subheader("Chat with Doc-Bot")
+    display_messages()
 
-if prompt := st.chat_input("Ask a question about the content"):
-  st.session_state.messages.append({"role": "user", "content": prompt})
-  with st.chat_message("user"):
-      st.markdown(prompt)
+user_query = st.text_input("You: ", key="input", max_chars=500)
 
-  with st.chat_message("assistant"):
-      if st.session_state.source_loaded:
-          response = get_answer(prompt, st.session_state.context)
-          st.markdown(response)
-          st.session_state.messages.append({"role": "assistant", "content": response})
-      else:
-          st.markdown("Please upload a PDF or load content from the webpage first.")
+if st.button("Send"):
+    with st.spinner("Processing your message..."):
+        send_message(user_query)
+    st.experimental_rerun()
 
-# Clear chat history and reset source
-if st.button("Clear Chat History and Reset Source"):
-  st.session_state.messages = []
-  st.session_state.context = ""
-  st.session_state.source_loaded = False
-  st.experimental_rerun()
+# Clear chat history button
+if st.button("Clear Chat History"):
+    st.session_state.all_messages = []
+    st.session_state.message_key = 0
+    st.experimental_rerun()
+
+# Export chat history
+if st.button("Export Chat History"):
+    chat_history = "\n".join([f"{msg['user']} ({msg['time']}): {msg['text']}" for msg in st.session_state.all_messages])
+    st.download_button(
+        label="Download Chat History",
+        data=chat_history,
+        file_name="chat_history.txt",
+        mime="text/plain"
+    )
