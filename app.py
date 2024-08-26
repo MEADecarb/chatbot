@@ -15,7 +15,7 @@ if 'message_key' not in st.session_state:
     st.session_state.message_key = 0
 
 # Load a pre-trained model
-qa_pipeline = pipeline("question-answering")
+qa_pipeline = pipeline("question-answering", model="distilbert/distilbert-base-cased-distilled-squad")
 
 # UI Setup
 st.set_page_config(page_title="Doc-Bot", page_icon="👋")
@@ -41,7 +41,8 @@ def load_and_tokenize_file(file_path):
 # Function to find the most relevant section
 def find_relevant_section(question, tokens):
     context = " ".join(tokens)
-    return qa_pipeline(question=question, context=context)['answer']
+    result = qa_pipeline(question=question, context=context, clean_up_tokenization_spaces=True)
+    return result['answer']
 
 # Message display and sending
 def display_messages():
