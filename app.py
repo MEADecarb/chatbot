@@ -1,85 +1,111 @@
-import streamlit as st
-import google.generativeai as genai
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
 import os
+import time
+from datetime import datetime
+import tempfile
+
+import streamlit as st
+from streamlit_chat import message
 import requests
-import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Configure the Gemini API
-genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
+# Initialize session state
+if 'all_messages' not in st.session_state:
+  st.session_state.all_messages = []
+if 'tokens' not in st.session_state:
+  st.session_state.tokens = []
+if 'api_key' not in st.session_state:
+  st.session_state.api_key = ""
 
-# Initialize the model
-model = genai.GenerativeModel('gemini-pro')
+# UI Setup
+st.set_page_config(page_title="Doc-Bot", page_icon="👋")
+st.markdown("<h1 style='text-align: center; color: red;'>Doc-Bot👋</h1>", unsafe_allow_html=True)
 
-# Function to fetch and parse sitemap
-def fetch_sitemap(url):
-  response = requests.get(url)
-  root = ET.fromstring(response.content)
-  links = [elem.text for elem in root.iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')]
-  return links
+# Sidebar for configuration
+with st.sidebar:
+  st.header("Configuration")
+  api_key = st.text_input('Grok API Key:', value=st.session_state.api_key, type="password")
+  if api_key:
+      st.session_state.api_key = api_key
+      os.environ["GROK_API_KEY"] = api_key
 
-# Function to scrape website content using Selenium
-def scrape_website_with_selenium(url):
-  chrome_options = Options()
-  chrome_options.add_argument("--headless")
-  chrome_options.add_argument("--no-sandbox")
-  chrome_options.add_argument("--disable-dev-shm-usage")
+# File handling functions
+def save_uploaded_file(uploadedfile):
+  with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as tmp_file:
+      tmp_file.write(uploadedfile.getbuffer())
+      return tmp_file.name
 
-  driver = webdriver.Chrome(options=chrome_options)
-  
-  try:
-      driver.get(url)
-      time.sleep(5)
-
-      WebDriverWait(driver, 10).until(
-          EC.presence_of_element_located((By.TAG_NAME, "body"))
-      )
-
-      text_content = driver.find_element(By.TAG_NAME, "body").text
-      return text_content
-
-  finally:
-      driver.quit()
-
-# Function to scrape all links
 @st.cache_data
-def scrape_all_links(links):
-  all_content = []
-  with ThreadPoolExecutor(max_workers=5) as executor:
-      future_to_url = {executor.submit(scrape_website_with_selenium, url): url for url in links[:10]}  # Limit to first 10 links for demo
-      for future in as_completed(future_to_url):
-          url = future_to_url[future]
-          try:
-              content = future.result()
-              all_content.append(f"Content from {url}:\n{content}\n\n")
-          except Exception as exc:
-              print(f'{url} generated an exception: {exc}')
-  return "\n".join(all_content)
+def tokenize_text_file(file_path):
+  try:
+      with open(file_path, 'r', encoding='utf-8') as f:
+          content = f.read()
+      # Implement more sophisticated tokenization here if needed
+      tokens = content.split()
+      return tokens
+  except Exception as e:
+      st.error(f"Error tokenizing file: {str(e)}")
+      return []
 
-# Streamlit app
-st.title("Energy Maryland Website Chatbot")
+# API interaction
+def query_grok_api(query, tokens):
+  url = "https://api.grok.com/v1/query"  # Replace with actual Grok API endpoint
+  headers = {
+      "Authorization": f"Bearer {st.session_state.api_key}",
+      "Content-Type": "application/json"
+  }
+  data = {
+      "query": query,
+      "documents": tokens
+  }
+  try:
+      response = requests.post(url, json=data, headers=headers)
+      response.raise_for_status()
+      return response.json().get("response", "No response from Grok API")
+  except requests.RequestException as e:
+      return f"Error: {str(e)}"
 
-# Fetch sitemap and scrape content (only if not already in session state)
-if 'all_content' not in st.session_state:
-  sitemap_url = "https://www.xml-sitemaps.com/download/energy.maryland.gov-49798b7b7/sitemap.xml?view=1"
-  with st.spinner("Fetching website content... This may take a few minutes."):
-      links = fetch_sitemap(sitemap_url)
-      st.session_state.all_content = scrape_all_links(links)
+# Message display and sending
+def display_messages():
+  message_container = st.container()
+  with message_container:
+      for msg in st.session_state.all_messages:
+          message(f"{msg['user']} ({msg['time']}): {msg['text']}", 
+                  is_user=msg['user']=='You', 
+                  key=msg['time'])
 
-# Chat interface
-st.subheader("Ask a question about Energy Maryland:")
-user_question = st.text_input("Your question:")
+def send_message(user_query):
+  if user_query:
+      st.session_state.all_messages.append({
+          'user': 'You', 
+          'time': datetime.now().strftime("%H:%M"), 
+          'text': user_query
+      })
+      bot_response = query_grok_api(user_query, st.session_state.tokens)
+      st.session_state.all_messages.append({
+          'user': 'Bot', 
+          'time': datetime.now().strftime("%H:%M"), 
+          'text': bot_response
+      })
 
-if user_question:
-  with st.spinner("Generating response..."):
-      chat_prompt = f"Based on the following content from the Energy Maryland website:\n\n{st.session_state.all_content[:50000]}\n\nUser question: {user_question}"
-      response = model.generate_content(chat_prompt)
+# Main app logic
+datafile = st.file_uploader("Upload your text file", type=['txt'])
 
-  st.subheader("Response:")
-  st.write(response.text)
+if datafile is not None:
+  with st.spinner("Processing file..."):
+      file_path = save_uploaded_file(datafile)
+      st.session_state.tokens = tokenize_text_file(file_path)
+  st.success("File processed successfully!")
+
+  # Chat interface
+  st.subheader("Chat with Doc-Bot")
+  user_query = st.text_input("You: ", key="input")
+  
+  if st.button("Send"):
+      if not st.session_state.api_key:
+          st.error("Please enter your Grok API Key in the sidebar.")
+      else:
+          send_message(user_query)
+  
+  display_messages()
+
+else:
+  st.info("Please upload a text file to start chatting.")
