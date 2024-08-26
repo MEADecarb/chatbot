@@ -14,6 +14,14 @@ if 'tokens' not in st.session_state:
 if 'message_key' not in st.session_state:
   st.session_state.message_key = 0
 
+def migrate_messages():
+  for i, msg in enumerate(st.session_state.all_messages):
+      if 'key' not in msg:
+          msg['key'] = f"migrated_{i}"
+
+# Migrate existing messages
+migrate_messages()
+
 # UI Setup
 st.set_page_config(page_title="Doc-Bot", page_icon="👋")
 st.markdown("<h1 style='text-align: center; color: red;'>Doc-Bot👋</h1>", unsafe_allow_html=True)
@@ -52,6 +60,8 @@ def query_grok_api(query, tokens):
 # Message display and sending
 def display_messages():
   for msg in st.session_state.all_messages:
+      if 'key' not in msg:
+          msg['key'] = f"added_{time.time()}"
       message(f"{msg['user']} ({msg['time']}): {msg['text']}", 
               is_user=msg['user']=='You', 
               key=msg['key'])
