@@ -6,7 +6,7 @@ import streamlit as st
 from transformers import pipeline
 from streamlit_chat import message
 import PyPDF2
-import docx
+import python_docx as docx  # Corrected import statement
 
 # Initialize session state
 if 'all_messages' not in st.session_state:
