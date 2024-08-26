@@ -11,6 +11,8 @@ if 'context' not in st.session_state:
   st.session_state.context = ""
 if 'messages' not in st.session_state:
   st.session_state.messages = []
+if 'source_loaded' not in st.session_state:
+  st.session_state.source_loaded = False
 
 @st.cache_resource
 def load_qa_model():
@@ -36,7 +38,7 @@ def load_text_from_url(url):
       return ""
 
 def get_answer(question, context):
-  inputs = tokenizer(question, context, return_tensors="pt")
+  inputs = tokenizer(question, context, return_tensors="pt", max_length=512, truncation=True)
   with torch.no_grad():
       outputs = model(**inputs)
   answer_start = torch.argmax(outputs.start_logits)
@@ -44,21 +46,23 @@ def get_answer(question, context):
   answer = tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][answer_start:answer_end]))
   return answer
 
-st.title("Chat with PDF or Text Content")
+st.title("Chat with PDF or Webpage Content")
 
 # Source selection
-source = st.radio("Choose your source:", ("PDF File", "URL Content"))
+source = st.radio("Choose your source:", ("PDF File", "Webpage Content"))
 
 if source == "PDF File":
   uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
   if uploaded_file is not None:
       st.session_state.context = extract_text_from_pdf(uploaded_file)
+      st.session_state.source_loaded = True
       st.success("PDF uploaded and processed successfully!")
 else:
   url = "https://energy.maryland.gov/Documents/082224_CandT.txt.txt"
-  if st.button("Load content from URL"):
+  if st.button("Load content from webpage"):
       st.session_state.context = load_text_from_url(url)
-      st.success("Content loaded from URL successfully!")
+      st.session_state.source_loaded = True
+      st.success("Content loaded from webpage successfully!")
 
 # Chat interface
 st.subheader("Chat")
@@ -72,14 +76,16 @@ if prompt := st.chat_input("Ask a question about the content"):
       st.markdown(prompt)
 
   with st.chat_message("assistant"):
-      if st.session_state.context:
+      if st.session_state.source_loaded:
           response = get_answer(prompt, st.session_state.context)
           st.markdown(response)
           st.session_state.messages.append({"role": "assistant", "content": response})
       else:
-          st.markdown("Please upload a PDF or load content from the URL first.")
+          st.markdown("Please upload a PDF or load content from the webpage first.")
 
-# Clear chat history
-if st.button("Clear Chat History"):
+# Clear chat history and reset source
+if st.button("Clear Chat History and Reset Source"):
   st.session_state.messages = []
+  st.session_state.context = ""
+  st.session_state.source_loaded = False
   st.experimental_rerun()
