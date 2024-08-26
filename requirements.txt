@@ -1,5 +1,9 @@
-streamlit==1.27.2
-requests==2.31.0
-transformers==4.34.1
-torch==2.0.1
+streamlit
+transformers
 streamlit-chat
+requests
+PyPDF2
+python-docx
+docx2txt
+tiktoken
+torch
