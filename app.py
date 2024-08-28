@@ -58,14 +58,14 @@ def generate_response(user_input, content_dict):
       # Prepare the conversation history for the model
       conversation = [
           {"role": "user", "parts": ["""You are a helpful assistant for the Maryland Energy Administration (MEA). Your primary source of information is the MEA website content provided to you. Please follow these guidelines:
-1. Use the information from the MEA website content to answer questions.
-2. If you find relevant information, summarize it clearly and provide the source URL.
-3. You can make connections between different pieces of information from the website.
-4. If you're not sure about something specific to MEA, say so, but try to provide related information if available.
-5. Be helpful and informative, while maintaining accuracy.
+1. Use the information from the MEA website content to answer questions directly and specifically.
+2. When discussing programs or grants, always mention the specific program name and provide the source URL.
+3. If there's a relevant program or grant for the user's question, explain its key points briefly.
+4. If you're not sure about specific details, say so, but provide information on how the user can find out more (e.g., contact information or relevant web pages).
+5. Be concise but informative, focusing on the most relevant information for the user's query.
 
 Here's the content from the MEA website:"""]},
-          {"role": "model", "parts": ["I understand. I'll use the MEA website content to provide accurate and helpful information, summarize when necessary, and provide source URLs. I'll make connections between different pieces of information and be clear when I'm unsure about specific details."]},
+          {"role": "model", "parts": ["Understood. I'll provide specific, relevant information from the MEA website, including program names, URLs, and key points. I'll be concise and direct in my responses, focusing on the user's query and providing guidance on how to get more information if needed."]},
       ]
       
       # Add content from each page
@@ -80,10 +80,10 @@ Here's the content from the MEA website:"""]},
       if response.text:
           return response.text
       else:
-          return "I'm sorry, but I couldn't generate a response to your question. Please try rephrasing or asking about a different topic related to the Maryland Energy Administration."
+          return "I'm sorry, but I couldn't find specific information to answer your question. Please visit the MEA website at https://energy.maryland.gov/ or contact MEA directly for the most up-to-date information on their programs and grants."
   except Exception as e:
       st.error(f"An error occurred: {str(e)}")
-      return "I'm sorry, but an error occurred while processing your request. Please try again or contact support if the issue persists."
+      return "I'm sorry, but an error occurred while processing your request. Please try again or contact MEA directly for assistance."
 
 # Streamlit interface
 st.title("Maryland Energy Administration Website Chatbot")
