@@ -34,10 +34,15 @@ def generate_response(user_input):
   try:
       # Prepare the conversation history for the model
       conversation = [
-          {"role": "system", "parts": [f"You are a chatbot that answers questions about the following website content: {st.session_state.website_content[:1000]}..."]},
-          *[{"role": "user" if i % 2 == 0 else "model", "parts": [msg]} for i, msg in enumerate(st.session_state.messages)],
-          {"role": "user", "parts": [user_input]}
+          {"role": "user", "parts": [f"You are a chatbot that answers questions about the following website content: {st.session_state.website_content[:1000]}..."]},
+          {"role": "model", "parts": ["Understood. I'm ready to answer questions about the website content you provided."]}
       ]
+      
+      for i, msg in enumerate(st.session_state.messages):
+          role = "user" if i % 2 == 0 else "model"
+          conversation.append({"role": role, "parts": [msg]})
+      
+      conversation.append({"role": "user", "parts": [user_input]})
       
       # Generate a response from the Gemini model
       response = model.generate_content(conversation)
