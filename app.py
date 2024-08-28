@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # Streamlit page configuration
-st.set_page_config(page_title="Website Chatbot with Gemini", page_icon="🤖")
+st.set_page_config(page_title="MEA Website Chatbot with Gemini", page_icon="🤖")
 
 # Access the Gemini API key from Streamlit secrets
 gemini_api_key = st.secrets["GEMINI_API_KEY"]
@@ -35,7 +35,7 @@ def generate_response(user_input):
       # Prepare the conversation history for the model
       conversation = [
           {"role": "user", "parts": [f"You are a chatbot that answers questions about the following website content: {st.session_state.website_content[:1000]}..."]},
-          {"role": "model", "parts": ["Understood. I'm ready to answer questions about the website content you provided."]}
+          {"role": "model", "parts": ["Understood. I'm ready to answer questions about the Maryland Energy Administration website content you provided."]}
       ]
       
       for i, msg in enumerate(st.session_state.messages):
@@ -56,18 +56,20 @@ def generate_response(user_input):
       return "I'm sorry, but an error occurred while processing your request."
 
 # Streamlit interface
-st.title("Website Chatbot with Gemini")
+st.title("Maryland Energy Administration Website Chatbot")
 
-# Website URL input
-website_url = st.text_input("Enter the website URL you want to chat about:")
+# Website URL input with pre-filled MEA homepage URL
+mea_url = "https://energy.maryland.gov/Pages/default.aspx"
+website_url = st.text_input("MEA Homepage URL:", value=mea_url)
 
 if website_url:
   if website_url != st.session_state.get('last_url', ''):
-      st.session_state.website_content = fetch_website_content(website_url)
+      with st.spinner("Loading website content..."):
+          st.session_state.website_content = fetch_website_content(website_url)
       st.session_state.last_url = website_url
       st.session_state.messages = []  # Clear previous conversation
   
-  st.write("Website content loaded. You can now ask questions about it!")
+  st.success("Website content loaded. You can now ask questions about the Maryland Energy Administration website!")
 
   # Display chat history
   for message in st.session_state.messages:
@@ -75,7 +77,7 @@ if website_url:
           st.write(message)
 
   # User input
-  user_input = st.chat_input("Your question about the website:")
+  user_input = st.chat_input("Your question about the MEA website:")
 
   # Generate response and display
   if user_input:
@@ -89,4 +91,7 @@ if website_url:
       
       st.session_state.messages.append(response)
 else:
-  st.write("Please enter a website URL to start chatting about its content.")
+  st.warning("Please enter the MEA website URL to start chatting about its content.")
+
+# Add a note about the chatbot's capabilities
+st.info("This chatbot can answer questions about the Maryland Energy Administration website. It uses the content from the URL provided above.")
