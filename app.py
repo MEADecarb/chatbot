@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 # Streamlit page configuration
-st.set_page_config(page_title="MEA Website Chatbot with Gemini", page_icon="🤖")
+st.set_page_config(page_title="MEA Website Chatbot with Gemini", page_icon="🤖", layout="wide")
 
 # Access the Gemini API key from Streamlit secrets
 gemini_api_key = st.secrets["GEMINI_API_KEY"]
@@ -36,6 +36,7 @@ def fetch_website_content(url, max_pages=10):
           soup = BeautifulSoup(response.content, 'html.parser')
           
           # Add the text content of the current page
+          content += f"Content from {current_url}:\n"
           content += soup.get_text() + "\n\n"
           visited.add(current_url)
           
@@ -55,8 +56,10 @@ def generate_response(user_input):
   try:
       # Prepare the conversation history for the model
       conversation = [
-          {"role": "user", "parts": [f"You are a chatbot that answers questions about the following Maryland Energy Administration website content: {st.session_state.website_content[:1000]}..."]},
-          {"role": "model", "parts": ["Understood. I'm ready to answer questions about the Maryland Energy Administration website content you provided."]}
+          {"role": "user", "parts": [f"You are a chatbot that answers questions about the Maryland Energy Administration website. Here's the content you should base your answers on: {st.session_state.website_content[:1000]}..."]},
+          {"role": "model", "parts": ["Understood. I will only provide information based on the Maryland Energy Administration website content you provided. If a question is outside this scope, I will state that I don't have that information."]},
+          {"role": "user", "parts": ["Always stick to the facts provided in the website content. If you're not sure about something, say you don't know or don't have that information. Never make up information."]},
+          {"role": "model", "parts": ["I understand. I will only provide information that is explicitly stated in the website content. If I'm unsure or if the information isn't available, I'll clearly state that I don't have that information."]}
       ]
       
       for i, msg in enumerate(st.session_state.messages):
@@ -71,13 +74,29 @@ def generate_response(user_input):
       if response.text:
           return response.text
       else:
-          return "I apologize, but I couldn't generate a response."
+          return "I apologize, but I couldn't generate a response based on the available information."
   except Exception as e:
       st.error(f"An error occurred: {str(e)}")
       return "I'm sorry, but an error occurred while processing your request."
 
 # Streamlit interface
 st.title("Maryland Energy Administration Website Chatbot")
+
+# Information about session history clearing
+st.markdown("""
+### Important Information
+This application is designed with your privacy and data security in mind. Here's how it works:
+
+1. **Session State Reset:** At the start of each session, the application resets its internal session state. This means that any data from previous sessions is cleared, ensuring that no information carries over from one use to the next.
+
+2. **Temporary Data Storage:** When you use this chatbot, the website content and your conversation history are only stored temporarily within the current session. As soon as you close the app or start a new session, this data is automatically deleted.
+
+3. **No Permanent Storage:** The app does not store any of the fetched website content or your conversations permanently. Once you end your session, all data is removed from the app's memory.
+
+4. **Security:** This process helps ensure that your interaction remains private and is not accessible after you finish using the app.
+
+In summary, every time you use the app, it starts with a clean slate, clearing all previous session data to protect your privacy and maintain data security.
+""")
 
 # Website URL input with pre-filled MEA homepage URL
 mea_url = "https://energy.maryland.gov/Pages/default.aspx"
@@ -115,4 +134,4 @@ else:
   st.warning("Please enter the MEA website URL to start chatting about its content.")
 
 # Add a note about the chatbot's capabilities
-st.info("This chatbot can answer questions about the Maryland Energy Administration website, including information from the homepage and its child pages.")
+st.info("This chatbot can answer questions about the Maryland Energy Administration website, including information from the homepage and its child pages. It will only provide information based on the content of these pages.")
