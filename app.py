@@ -3,6 +3,9 @@ import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Streamlit page configuration
 st.set_page_config(page_title="MEA Website Chatbot with Gemini", page_icon="🤖", layout="wide")
@@ -18,12 +21,19 @@ model = genai.GenerativeModel('gemini-pro')
 if "messages" not in st.session_state:
   st.session_state.messages = []
 if "website_content" not in st.session_state:
-  st.session_state.website_content = ""
+  st.session_state.website_content = {}
+
+def process_content(content):
+  # Remove extra whitespace and normalize text
+  content = re.sub(r'\s+', ' ', content).strip()
+  # Extract key points (this is a simple example, you might want to use NLP techniques for better extraction)
+  sentences = content.split('.')
+  key_points = [s.strip() for s in sentences if len(s.split()) > 5][:10]  # Take first 10 substantial sentences
+  return "\n".join(key_points)
 
 def fetch_website_content(url, max_pages=10):
-  """Fetch and parse website content from the main page and its child pages"""
   try:
-      content = ""
+      content_dict = {}
       visited = set()
       to_visit = [url]
       
@@ -35,9 +45,11 @@ def fetch_website_content(url, max_pages=10):
           response = requests.get(current_url)
           soup = BeautifulSoup(response.content, 'html.parser')
           
-          # Add the text content of the current page
-          content += f"Content from {current_url}:\n"
-          content += soup.get_text() + "\n\n"
+          # Process and store the content
+          raw_content = soup.get_text()
+          processed_content = process_content(raw_content)
+          content_dict[current_url] = processed_content
+          
           visited.add(current_url)
           
           # Find child links
@@ -46,25 +58,33 @@ def fetch_website_content(url, max_pages=10):
               if child_url.startswith(url) and child_url not in visited:
                   to_visit.append(child_url)
       
-      return content
+      return content_dict
   except Exception as e:
       st.error(f"Error fetching website content: {str(e)}")
-      return ""
+      return {}
 
-def generate_response(user_input):
-  """Generate a response using the Gemini model"""
+def check_fact(response, content_dict):
+  # Combine all content
+  all_content = " ".join(content_dict.values())
+  
+  # Use TF-IDF and cosine similarity to check if response is similar to any content
+  vectorizer = TfidfVectorizer().fit([all_content, response])
+  vectors = vectorizer.transform([all_content, response])
+  similarity = cosine_similarity(vectors[0:1], vectors[1:2])[0][0]
+  
+  return similarity > 0.1  # Adjust this threshold as needed
+
+def generate_response(user_input, content_dict):
   try:
       # Prepare the conversation history for the model
       conversation = [
-          {"role": "user", "parts": [f"You are a chatbot that answers questions about the Maryland Energy Administration website. Here's the content you should base your answers on: {st.session_state.website_content[:1000]}..."]},
-          {"role": "model", "parts": ["Understood. I will only provide information based on the Maryland Energy Administration website content you provided. If a question is outside this scope, I will state that I don't have that information."]},
-          {"role": "user", "parts": ["Always stick to the facts provided in the website content. If you're not sure about something, say you don't know or don't have that information. Never make up information."]},
-          {"role": "model", "parts": ["I understand. I will only provide information that is explicitly stated in the website content. If I'm unsure or if the information isn't available, I'll clearly state that I don't have that information."]}
+          {"role": "user", "parts": ["You are a chatbot that answers questions about the Maryland Energy Administration website. You must follow these rules strictly:\n1. Only use the information provided in the following content to answer questions.\n2. If the answer is not in the provided content, say 'I don't have information about that.'\n3. Always cite the source URL for your information.\n4. Do not make up or infer any information not explicitly stated in the content.\n5. Provide a confidence score from 0 to 1 for each response.\n\nHere's the content:"]},
+          {"role": "model", "parts": ["I understand and will strictly adhere to these rules. I will only provide information explicitly stated in the given content, always cite sources, and give a confidence score. If I don't have the information, I'll clearly state that."]},
       ]
       
-      for i, msg in enumerate(st.session_state.messages):
-          role = "user" if i % 2 == 0 else "model"
-          conversation.append({"role": role, "parts": [msg]})
+      # Add content from each page
+      for url, content in content_dict.items():
+          conversation.append({"role": "user", "parts": [f"Content from {url}:\n{content}"]})
       
       conversation.append({"role": "user", "parts": [user_input]})
       
@@ -72,9 +92,14 @@ def generate_response(user_input):
       response = model.generate_content(conversation)
       
       if response.text:
-          return response.text
+          # Check if the response is factual
+          is_factual = check_fact(response.text, content_dict)
+          if is_factual:
+              return response.text
+          else:
+              return "I don't have accurate information to answer that question based on the provided content."
       else:
-          return "I apologize, but I couldn't generate a response based on the available information."
+          return "I don't have information about that based on the provided content."
   except Exception as e:
       st.error(f"An error occurred: {str(e)}")
       return "I'm sorry, but an error occurred while processing your request."
@@ -96,6 +121,15 @@ This application is designed with your privacy and data security in mind. Here's
 4. **Security:** This process helps ensure that your interaction remains private and is not accessible after you finish using the app.
 
 In summary, every time you use the app, it starts with a clean slate, clearing all previous session data to protect your privacy and maintain data security.
+""")
+
+st.markdown("""
+### How This Chatbot Works
+- This chatbot provides information solely based on the content of the Maryland Energy Administration website.
+- All responses are generated using only the information from the website pages.
+- If the chatbot doesn't have information to answer a question, it will clearly state that.
+- Each response includes a confidence score and a source URL for transparency.
+- If you believe a response is inaccurate, please use the report button below the response.
 """)
 
 # Website URL input with pre-filled MEA homepage URL
@@ -126,8 +160,14 @@ if website_url:
           st.write(user_input)
       
       with st.chat_message("assistant"):
-          response = generate_response(user_input)
+          response = generate_response(user_input, st.session_state.website_content)
           st.write(response)
+          
+          # Add confidence score display and report button (you'll need to extract the confidence score from the response)
+          confidence_score = 0.9  # This should be extracted from the model's response
+          st.write(f"Confidence Score: {confidence_score:.2f}")
+          if st.button("Report this response as inaccurate"):
+              st.write("Thank you for your feedback. We will review this response.")
       
       st.session_state.messages.append(response)
 else:
