@@ -1,40 +1,29 @@
 import streamlit as st
-import requests
+import google.generativeai as gpt
 
-# Function to load text from a URL
-def load_text_from_url(url):
-  response = requests.get(url)
-  if response.status_code == 200:
-      return response.text
-  else:
-      st.error("Failed to load the document.")
-      return ""
+# Access the Gemini API key from the environment variable
+gemini_api_key = st.secrets["GEMINI_API_KEY"]
 
-# Function to process user input and generate a response
-def generate_response(user_input, document_text):
-  # Simple keyword matching for demonstration
-  if user_input.lower() in document_text.lower():
-      return f"I found something related to '{user_input}' in the document."
-  else:
-      return "I couldn't find anything related to your query in the document."
+# Initialize the Gemini client
+gpt.configure(api_key=gemini_api_key)
+gemini_client = gpt.models.TextGenerationModel()
 
-# Streamlit app
-def main():
-  st.title("Simple Streamlit Chatbot")
-  
-  # Predefined URL of the text document
-  url = "https://energy.maryland.gov/Documents/082224_CandT.txt.txt"
-  document_text = load_text_from_url(url)
-  
-  if document_text:
-      st.write("Document loaded successfully.")
-      
-      # User input
-      user_input = st.text_input("Ask something about the document:")
-      
-      if user_input:
-          response = generate_response(user_input, document_text)
-          st.write("Chatbot:", response)
+# Conversation history
+memory = []
 
-if __name__ == "__main__":
-  main()
+def generate_response(user_input):
+  """Logic to interact with Gemini API and handle conversation chain"""
+  prompt = " ".join(memory) + " User: " + user_input  # Build prompt with conversation history
+  response = gemini_client.generate(prompt=prompt)
+  memory.append((user_input, response.text))
+  return response.text
+
+# Streamlit interface
+st.title("Website Chatbot with Gemini")
+st.write("Ask me anything about this website!")
+
+user_input = st.text_input("Your question:", key="input")
+
+if user_input:
+  response = generate_response(user_input)
+  st.write(response)
