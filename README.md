@@ -1,6 +1,3 @@
-Here's a GitHub README file for your Streamlit-based chatbot application:
-
----
 
 # MEA Website Chatbot with Gemini 🤖
 
